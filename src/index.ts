@@ -1,37 +1,51 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import { db } from './db';
-import { students } from '../drizzle/schema';
-import { eq } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { serve } from "bun";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { Database } from "bun:sqlite";
 
-dotenv.config();
-const app = express();
-app.use(express.json());
+// SQLite DB setup
+const sqlite = new Database("sqlite.db");
+const db = drizzle(sqlite);
+console.log("SQLite connected");
 
-app.post('/students', async (req, res) => {
-  const { firstName, lastName, studentId, birthDate, gender } = req.body;
-  const id = randomUUID();
-  await db.insert(students).values({ id, firstName, lastName, studentId, birthDate, gender });
-  res.status(201).json({ id });
+// Schema definition
+const students = sqliteTable("students", {
+  id: text("id").primaryKey(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  dob: text("dob"),
+  gender: text("gender")
 });
 
-app.get('/students', async (req, res) => {
-  const all = await db.select().from(students);
-  res.json(all);
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS students (
+    id TEXT PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT,
+    dob TEXT,
+    gender TEXT
+  );
+`);
+
+serve({
+  port: 3000,
+  fetch: async (req) => {
+    const url = new URL(req.url);
+    console.log(`[${req.method}] ${url.pathname}`);
+
+    if (req.method === "GET" && url.pathname === "/students") {
+      const result = await db.select().from(students);
+      return Response.json(result);
+    }
+
+    if (req.method === "POST" && url.pathname === "/students") {
+      const body = await req.json();
+      await db.insert(students).values(body);
+      return Response.json({ ok: true });
+    }
+
+    return new Response("Not found", { status: 404 });
+  },
 });
 
-app.put('/students/:id', async (req, res) => {
-  const { id } = req.params;
-  await db.update(students).set(req.body).where(eq(students.id, id));
-  res.json({ updated: true });
-});
-
-app.delete('/students/:id', async (req, res) => {
-  const { id } = req.params;
-  await db.delete(students).where(eq(students.id, id));
-  res.json({ deleted: true });
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running at http://localhost:${port}`));
+console.log("Listening on http://localhost:3000");
