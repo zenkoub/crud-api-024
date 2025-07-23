@@ -13,6 +13,16 @@ const students = sqliteTable('students', {
   gender: text('gender'),
 });
 
+const API_KEY = process.env.API_KEY;
+
+export default async function handler(req: Request) {
+  const key = req.headers.get("x-api-key");
+
+  if (key !== API_KEY) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+}
+
 export default async function handler(req: Request) {
   const url = new URL(req.url);
 
